@@ -1,10 +1,20 @@
-from mongoengine import StringField, IntField, BooleanField
+from mongoengine import StringField, IntField, BooleanField, ReferenceField, DateTimeField, ListField
 from flask_login import UserMixin
 from . import db
 from . import login_manager
 from werkzeug.security import generate_password_hash, check_password_hash
 from itsdangerous import TimedJSONWebSignatureSerializer as Serializer
 from flask import current_app
+from datetime import datetime
+
+
+class Role(db.Document):
+    meta = {
+        'collection': 'roles'
+    }
+    name = StringField(max_length=64, unique=True)
+    default = BooleanField(default=False)
+    permissions = IntField()
 
 
 class User(UserMixin, db.Document):
@@ -13,11 +23,20 @@ class User(UserMixin, db.Document):
         'ordering': ['-create_at'],
         'strict': False,
     }
+
+    # def __init__(self, **kwargs):
+    #     super(User, self).__init__(**kwargs)
+    #     self.role_id = Permission.FOLLOW | Permission.COMMENT | Permission.WRITE_ARTICLES
+
     email = StringField()
     username = StringField()
     password_hash = StringField(max_length=128)
     role_id = IntField()
     confirmed = BooleanField(default=False)
+    about_me = StringField()
+    member_since = DateTimeField(default=datetime.utcnow)
+    last_seen = DateTimeField(default=datetime.utcnow)
+    role = ReferenceField(Role)
 
     @property
     def password(self):
@@ -46,15 +65,19 @@ class User(UserMixin, db.Document):
         self.save()
         return True
 
+    def is_admin(self):
+        return self.role is not None and (self.role.permissions & Permission.ADMINISTER) == Permission.ADMINISTER
+
 
 @login_manager.user_loader
 def load_user(user_id):
     return User.objects(id=user_id).first()
 
 
-class Role(db.Document):
-    meta = {
-        'collection': 'roles'
-    }
-
+class Permission:
+    FOLLOW = 0x01
+    COMMENT = 0x02
+    WRITE_ARTICLES = 0x04
+    MODERATE_COMMENTS = 0x08
+    ADMINISTER = 0x80
 
